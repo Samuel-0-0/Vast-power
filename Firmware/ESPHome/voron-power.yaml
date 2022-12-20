@@ -1,0 +1,901 @@
+# ============================================================================================
+#  secrets.yaml
+#
+#  wifi_ssid: 'ssid'                    # WiFi_SSID名称
+#  wifi_password: '12345678'            # WiFi密码
+#  wifi_password_AP: '12345678'         # AP模式密码
+#  wifi_fast_connect: 'false'           # 如果SSID是隐藏的，设置为true
+#  wifi_reboot_timeout: 0s              # WiFi离线多久后重启设备，秒s/分钟min/小时h，不需要此功能设置为0s
+#  wifi_gateway: '192.168.88.1'         # 网关
+#  wifi_subnet: '255.255.255.0'         # 子网掩码
+#  wifi_dns1: '192.168.88.1'            # 主DNS
+#  ota_password: '12345678'             # OTA密码
+#  api_password: '12345678'             # API密码
+#  api_reboot_timeout: 0s               # 与Home Assistant失去连接多久后重启设备，秒s/分钟min/小时h，不需要此功能设置为0s
+#  mqtt_host: '192.168.88.115'          # MQTT代理服务器IP地址
+#  mqtt_port: '1883'                    # MQTT代理服务器端口
+#  mqtt_username: ''                    # MQTT代理服务器用户名
+#  mqtt_password: ''                    # MQTT代理服务器密码
+#  mqtt_reboot_timeout: 0s              # 与MQTT服务端失去连接多久后重启设备，秒s/分钟min/小时h，不需要此功能设置为0s
+# ============================================================================================
+
+substitutions:
+  wifi_ip_voron_power: '192.168.88.192'                       # 静态IP地址
+  moonraker_api: 'http://192.168.88.173:7125/printer/info'    # moonraker api地址
+  #moonraker_api: 'http://192.168.88.11:1880/voron'
+
+esphome:
+  name: voron-power
+  name_add_mac_suffix: True         # 在名字后面添加mac后缀
+  includes:
+    - su_03t.h                      # 添加自定义的传感器
+  # 设置新的OTA密码
+#  on_boot:
+#    - lambda: |-
+#        id(voron_ota).set_auth_password("New password");
+
+esp32:
+  board: esp32dev                   # ESP32-S模组默认用nodemcu-32s，端口全引出
+  variant: esp32                    # 不同版本，esp32, esp32s2, esp32s3, esp32c3, esp32h2
+#  framework:
+#    type: esp-idf
+#    version: recommended
+    # Custom sdkconfig options
+#    sdkconfig_options:
+#      CONFIG_COMPILER_OPTIMIZATION_SIZE: y
+    # Advanced tweaking options
+#    advanced:
+#      ignore_efuse_mac_crc: false
+
+# 调试模式，可以在ESPHOME后台显示日志信息
+debug:
+
+# 打印日志
+logger:
+  baud_rate: 0            # 默认115200，设置0关闭UART日志输出
+  level: VERBOSE          # 可选等级 NONE, ERROR, WARN, INFO, DEBUG, VERBOSE, VERY_VERBOSE
+##  logs:
+##    mqtt.component: DEBUG
+##    mqtt.client: ERROR
+##  hardware_uart: UART0
+  #→ UART0 - TX: GPIO1, RX: GPIO3
+  #→ The ESP8266 UART0 can also be ‘swapped’ to TX/RX on the CTS/RTS pins, 
+  #→ if you need to use GPIO1 and GPIO3 for something else.
+  #→ UART0_SWAP - TX: GPIO15, RX: GPIO13 (Only on ESP8266)
+  #→ UART1 - TX: GPIO2, RX: None (Only on ESP8266)
+  #→ UART1 - TX: GPIO9, RX: GPIO10 (Only on ESP32)
+  #→ UART2 - TX: GPIO16, RX: GPIO17 (Only on ESP32)
+
+# 状态灯
+status_led:
+  pin: GPIO2
+
+###  Home Assistant API 和 MQTT 只选1个开启  ###
+
+# 使用Home Assistant API
+api:
+  reboot_timeout: !secret api_reboot_timeout
+  encryption:
+    key: !secret api_encryption_key
+
+# 使用MQTT
+##mqtt:
+##  broker: !secret mqtt_host
+##  username: !secret mqtt_username
+##  password: !secret mqtt_password
+##  reboot_timeout: !secret mqtt_reboot_timeout
+##  id: mqtt_client
+
+###  Home Assistant API 和 MQTT 只选1个开启  ###
+
+# 使用WEB API接入    https://esphome.io/web-api/index.html
+##web_server:
+##  port: 80
+
+# 在线更新
+ota:
+  id: voron_ota
+  password: !secret ota_password
+  on_begin:
+    then:
+      - uart.write:
+          id: su_uart
+          data: [0xAA, 0x55, 0x03, 0x01, 0x00, 0x00, 0x00, 0x55, 0xAA] #返回正在OTA
+  on_end:
+    then:
+      - uart.write:
+          id: su_uart
+          data: [0xAA, 0x55, 0x04, 0x01, 0x00, 0x00, 0x00, 0x55, 0xAA] #返回OTA已完成
+
+# WIFI
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  reboot_timeout: !secret wifi_reboot_timeout
+  fast_connect: !secret wifi_fast_connect
+  # 设置固定IP地址
+  manual_ip:
+    static_ip: $wifi_ip_voron_power
+    gateway: !secret wifi_gateway
+    subnet: !secret wifi_subnet
+    dns1: !secret wifi_dns1
+
+  # 无法连接wifi时开启AP模式(captive portal)，如果不启用webserver则没必要开启此配置
+##  ap:
+##    ssid: "Voron-Power Fallback Hotspot"
+##    password: !secret wifi_password_AP
+
+# AP模式
+##captive_portal:
+
+# 串口
+uart:
+  # 语音模块
+  - id: su_uart
+    tx_pin: GPIO1
+    rx_pin: GPIO3
+    baud_rate: 9600
+    #data_bits: 8
+    #parity: NONE
+    #stop_bits: 1
+    debug:
+      #direction: RX
+      sequence:
+        - lambda: UARTDebug::log_hex(direction, bytes, ':');
+  # 电量模块
+  - id: im1266_uart
+    tx_pin: GPIO17
+    rx_pin: GPIO16
+    baud_rate: 4800
+    data_bits: 8
+    parity: NONE
+    stop_bits: 1
+
+# 文本传感器
+text_sensor:
+  # ESPHome版本号
+  - platform: version
+    name: ESPHome Version
+    #hide_timestamp: True
+    entity_category: diagnostic
+  # WIFI信息
+  - platform: wifi_info
+    ip_address:
+      name: IP Address
+      icon: "mdi:ip-network"
+      entity_category: diagnostic
+  # 设备运行时间
+  - platform: template
+    name: UPTIME
+    id: uptime_human
+    icon: mdi:timer-outline
+    entity_category: diagnostic
+  # DEBUG
+  - platform: debug
+    ##device:
+    ##  name: "Device Info"
+    reset_reason:
+      name: "Reset Reason"
+  # 打印机状态
+  - platform: template
+    name: Print State
+    id: print_state
+
+# IM1266模块通讯采用标准Modbus-RTU协议，使用UART TTL接口
+modbus:
+  uart_id: im1266_uart
+  id: modbus_im1266
+
+modbus_controller:
+  - id: im1266
+    address: 0x1 # the Modbus device addr
+    modbus_id: modbus_im1266
+    setup_priority: -10
+
+globals:
+   - id: light_up_cnt
+     type: int
+     restore_value: no
+     initial_value: '0'
+   - id: light_down_cnt
+     type: int
+     restore_value: no
+     initial_value: '0'
+
+
+# 传感器
+sensor:
+  # UART SU-03T Sensor
+  - platform: custom
+    lambda: |-
+      auto su_03t_sensor = new Su_03t_Sensor(id(su_uart));
+      App.register_component(su_03t_sensor);
+      return {su_03t_sensor};
+    sensors:
+      id: su_03t
+      on_value:
+        then:
+##          lambda: |-
+##            ESP_LOGD("main", "Got value %f", x);
+        # 0x10 开头，控制灯光开关
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x1011  开照明灯
+                  return id(su_03t).state == 0x1011;
+            then:
+              - lambda: |-
+                  auto call = id(RGB_light).turn_on();
+                  call.set_transition_length(1000); // in ms
+                  call.set_brightness(1.0); // 1.0 is full brightness
+                  call.set_color_mode(ColorMode::RGB_WHITE);
+                  call.set_white(0);
+                  call.set_effect("Rainbow Effect With Custom Values");
+                  call.perform();
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x1010  关照明灯
+                  return id(su_03t).state == 0x1010;
+            then:
+              light.turn_off: RGB_light
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x1021  开氛围灯
+                  return id(su_03t).state == 0x1021;
+            then:
+              - lambda: |-
+                  auto call = id(RGB_light).turn_on();
+                  call.set_transition_length(1000); // in ms
+                  call.set_brightness(1.0); // 1.0 is full brightness
+                  call.set_color_mode(ColorMode::RGB_WHITE);
+                  call.set_white(0);
+                  call.set_effect("Rainbow Effect With Custom Values");
+                  call.perform();
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x1020  关氛围灯
+                  return id(su_03t).state == 0x1020;
+            then:
+              light.turn_off: RGB_light
+        # 0x20 开头，控制灯光亮度
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x2011  调亮灯光
+                  return id(su_03t).state == 0x2011;
+            then:
+              - light.dim_relative:
+                  id: RGB_light
+                  relative_brightness: 10%
+                  transition_length: 0.1s
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x2010  调暗灯光
+                  return id(su_03t).state == 0x2010;
+            then:
+              - light.dim_relative:
+                  id: RGB_light
+                  relative_brightness: -10%
+                  transition_length: 0.1s
+        # 0x30 开头，控制继电器
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x3010  关继电器1
+                  return id(su_03t).state == 0x3010;
+            then:
+              - if:
+                  condition:
+                    #- lambda: |-
+                    text_sensor.state:
+                      id: print_state
+                      state: "print"
+                  then:
+                    - uart.write:
+                        id: su_uart
+                        data: [0xAA, 0x55, 0x01, 0x00, 0x00, 0x00, 0x00, 0x55, 0xAA] #返回打印中
+                  else:
+                    - switch.turn_off: switch1
+                    - uart.write:
+                        id: su_uart
+                        data: [0xAA, 0x55, 0x02, 0x01, 0x00, 0x00, 0x00, 0x55, 0xAA] #返回已执行
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x3011  开继电器1
+                  return id(su_03t).state == 0x3011;
+            then:
+              - switch.turn_on: switch1
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x3020  关继电器2
+                  return id(su_03t).state == 0x3020;
+            then:
+              - switch.turn_off: switch1
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x3021  开继电器2
+                  return id(su_03t).state == 0x3021;
+            then:
+              - switch.turn_on: switch1
+        # 0x40 开头，控制打印机
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x4001  暂停打印
+                  return id(su_03t).state == 0x4001;
+            then:
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x4010  恢复打印
+                  return id(su_03t).state == 0x4010;
+            then:
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x4011  取消打印
+                  return id(su_03t).state == 0x4011;
+            then:
+        # 0x50 开头，打印进度
+        - if:
+            condition:
+              - lambda: |-
+                  // 0x5000  打印进度
+                  return id(su_03t).state == 0x5000;
+            then:
+              - uart.write:
+                  id: su_uart
+                  data: [0xAA, 0x55, 0x05, 0x89, 0x00, 0x32, 0x55, 0xAA] #返回已执行
+
+  # IM1266传感器-电压
+  - platform: modbus_controller
+    modbus_controller_id: im1266
+    name: "Power Voltage"
+    id: im1266_voltage
+    register_type: holding
+    address: 0x0048
+    unit_of_measurement: "V"
+    value_type: U_DWORD
+    accuracy_decimals: 4
+    filters:
+      - multiply: 0.0001
+  # IM1266传感器-电流
+  - platform: modbus_controller
+    modbus_controller_id: im1266
+    name: "Power Current"
+    id: im1266_current
+    register_type: holding
+    address: 0x0049
+    unit_of_measurement: "A"
+    value_type: U_DWORD
+    accuracy_decimals: 4
+    filters:
+      - multiply: 0.0001
+  # IM1266传感器-功率
+  - platform: modbus_controller
+    modbus_controller_id: im1266
+    name: "Power Power"
+    id: im1266_power
+    register_type: holding
+    address: 0x004A
+    unit_of_measurement: "W"
+    value_type: U_DWORD
+    accuracy_decimals: 4
+    filters:
+      - multiply: 0.0001
+  # IM1266传感器-用电量
+  - platform: modbus_controller
+    modbus_controller_id: im1266
+    name: "Power Energy"
+    id: im1266_energy
+    register_type: holding
+    address: 0x004B
+    unit_of_measurement: "kWh"
+    value_type: U_DWORD
+    accuracy_decimals: 4
+    filters:
+      - multiply: 0.0001
+  # IM1266传感器-功率因数
+#  - platform: modbus_controller
+#    modbus_controller_id: im1266
+#    name: "Power PF"
+#    id: im1266_pf
+#    register_type: holding
+#    address: 0x004C
+#    unit_of_measurement: ""
+#    value_type: U_DWORD
+#    accuracy_decimals: 3
+#    filters:
+#      - multiply: 0.001
+  # IM1266传感器-二氧化碳排量
+  - platform: modbus_controller
+    modbus_controller_id: im1266
+    name: "Power CO2"
+    id: im1266_co2
+    register_type: holding
+    address: 0x004D
+    unit_of_measurement: "Kg"
+    value_type: U_DWORD
+    accuracy_decimals: 4
+    filters:
+      - multiply: 0.0001
+  # IM1266传感器-温度
+  - platform: modbus_controller
+    modbus_controller_id: im1266
+    name: "Power Temprature"
+    id: im1266_temprature
+    register_type: holding
+    address: 0x004E
+    unit_of_measurement: "°C"
+    value_type: U_DWORD
+    accuracy_decimals: 2
+    filters:
+      - multiply: 0.01
+  # IM1266传感器-频率，有问题，加上后ESP32不能启动
+#  - platform: modbus_controller
+#    modbus_controller_id: im1266
+#    name: "Power Frequency"
+#    id: im1266_frequency
+#    register_type: holding
+#    address: 0x004F
+#    unit_of_measurement: "Hz"
+#    value_type: U_DWORD
+#    accuracy_decimals: 2
+#    filters:
+#      - multiply: 0.01
+  - platform: ntc
+    name: NTC
+    sensor: resistance_sensor
+    calibration:
+      b_constant: 3950
+      reference_temperature: 25°C
+      reference_resistance: 5kOhm
+#      - 199.2kOhm -> 10°C
+#      - 100kOhm -> 25°C
+#      - 35.8kOhm -> 50°C
+  - platform: resistance
+    id: resistance_sensor
+    sensor: source_sensor
+    configuration: DOWNSTREAM
+    resistor: 10kOhm
+    reference_voltage: 3.32V
+    name: Resistance Sensor
+    filters:
+      - lambda: return x/1000;
+    unit_of_measurement: "kΩ"
+  - platform: adc
+    id: source_sensor
+    pin: GPIO34
+    attenuation: auto
+    #filters:
+    #  - multiply: 3.3
+    update_interval: 5s
+
+  # 运行时间
+  - platform: uptime
+    #name: Uptime Sensor
+    id: uptime_raw
+    update_interval: 60s
+    on_raw_value:
+      then:
+        - text_sensor.template.publish:
+            id: uptime_human
+            state: !lambda |-
+              int seconds = round(id(uptime_raw).raw_state);
+              int days = seconds / (24 * 3600);
+              seconds = seconds % (24 * 3600);
+              int hours = seconds / 3600;
+              seconds = seconds % 3600;
+              int minutes = seconds / 60;
+              seconds = seconds % 60;
+              if (days > 0) {
+                return (String(days) + "天" + String(hours) + "小时").c_str();
+              }
+              if (hours > 0) {
+                return (String(hours) + "小时" + String(minutes) + "分").c_str();
+              }
+              if (minutes > 0) {
+                return (String(minutes) + "分" + String(seconds) + "秒").c_str();
+              }
+              return (String(seconds) + "秒").c_str();
+  # WIFI信号
+  - platform: wifi_signal
+    name: WiFi Signal
+    update_interval: 60s
+  # 编码器
+  - platform: rotary_encoder
+    name: "Rotary Encoder"
+    pin_a: GPIO26
+    pin_b: GPIO25
+
+# 二进制传感器
+binary_sensor:
+  # 系统状态
+  - platform: status
+    name: "Status"
+    id: system_status
+  # 编码器按钮
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode: INPUT
+      inverted: true
+    name: "Button Enter"
+    id: button_enter
+    internal: true
+    filters:
+      - delayed_off: 10ms
+    on_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - logger.log: "Hello World"
+        - switch.toggle: rs
+  # 虚拟的继电器1开关状态
+  - platform: template
+    id: shadow1
+    internal: true
+  # 虚拟的继电器2开关状态
+  - platform: template
+    id: shadow2
+    internal: true
+  # 虚拟的SU刷机模式切换开关状态
+  - platform: template
+    id: shadow3
+    internal: true
+
+
+# 灯
+light:
+  - platform: neopixelbus
+    type: GRBW
+    variant: SK6812
+    pin: GPIO4
+    num_leds: 57
+    name: "NeoPixel Light"
+    id: RGB_light
+    # 默认过度时间
+    default_transition_length: 1s
+    # 默认闪烁过度时间
+    flash_transition_length: 0s
+    # 系统恢复后尝试恢复状态，如果无法恢复，则默认为OFF
+    restore_mode: RESTORE_DEFAULT_OFF
+    effects:
+      - addressable_rainbow:
+      - addressable_rainbow:
+          name: Rainbow Effect With Custom Values
+          speed: 20
+          width: 50
+      - random:
+      # Customize parameters
+      - random:
+          name: "My Slow Random Effect"
+          transition_length: 30s
+          update_interval: 30s
+      - random:
+          name: "My Fast Random Effect"
+          transition_length: 4s
+          update_interval: 5s
+      - addressable_color_wipe:
+      - addressable_color_wipe:
+          name: Color Wipe Effect With Custom Values
+          colors:
+            - red: 100%
+              green: 100%
+              blue: 100%
+              num_leds: 1
+            - red: 0%
+              green: 0%
+              blue: 0%
+              num_leds: 1
+          add_led_interval: 100ms
+          reverse: false
+      - addressable_scan:
+      - addressable_scan:
+          name: Scan Effect With Custom Values
+          move_interval: 100ms
+          scan_width: 1
+
+# IO输出控制
+output:
+  # 电子开关对应的GPIO
+  - platform: gpio
+    pin: GPIO32
+    id: sel0
+    inverted: true
+  # 电子开关对应的GPIO
+  - platform: gpio
+    pin: GPIO33
+    id: sel1
+    inverted: true
+  # 继电器控制对应的GPIO
+  - platform: gpio
+    pin: GPIO5
+    id: a1
+  # 继电器控制对应的GPIO
+  - platform: gpio
+    pin: GPIO18
+    id: b1
+  # 继电器控制对应的GPIO
+  - platform: gpio
+    pin: GPIO19
+    id: a2
+  # 继电器控制对应的GPIO
+  - platform: gpio
+    pin: GPIO21
+    id: b2
+
+
+# 开关
+switch:
+  - platform: template
+    name: "Switch"
+    id: rs
+    optimistic: true
+    restore_state: true
+  # IM1266数据清零
+  - platform: uart
+    name: "IM1266 Clear"
+    uart_id: im1266_uart
+    data: [0x01,0x10,0x00,0x4B,0x00,0x02,0x04,0x00,0x00,0x00,0x00,0xB6,0x2C]
+  # 重启ESP
+  - platform: restart
+    name: "Restart"
+  # 关闭ESP
+  #- platform: shutdown
+  #  name: "Shutdown"
+  # 屏幕背光控制
+  - platform: gpio
+    pin: GPIO23
+    restore_mode: ALWAYS_ON
+    name: "Screen Backlight"
+    id: backlight
+  # SU-03T电源控制
+  - platform: gpio
+    pin: GPIO22
+    name: "Voice Assistant Power"
+    restore_mode: ALWAYS_ON
+    id: su_power
+    # 模拟的继电器开关1
+  - platform: template
+    name: "Switch 1"
+    id: switch1
+    restore_state: true
+    lambda: |-
+      if (id(shadow1).state) {
+        //ESP_LOGD("shadow1", "State %d", id(shadow1).state);
+        return true;
+      } else {
+        //ESP_LOGD("shadow1", "State %d", id(shadow1).state);
+        return false;
+      }
+    turn_on_action:
+      - output.turn_on: a1
+      - delay: 10ms
+      - output.turn_off: a1
+      - binary_sensor.template.publish:
+          id: shadow1
+          state: ON
+    turn_off_action:
+      - output.turn_on: b1
+      - delay: 10ms
+      - output.turn_off: b1
+      - binary_sensor.template.publish:
+          id: shadow1
+          state: OFF
+  # 模拟的继电器开关2
+  - platform: template
+    name: "Switch 2"
+    id: switch2
+    restore_state: true
+    lambda: |-
+      if (id(shadow2).state) {
+        return true;
+      } else {
+        return false;
+      }
+    turn_on_action:
+      - output.turn_on: a2
+      - delay: 10ms
+      - output.turn_off: a2
+      - binary_sensor.template.publish:
+          id: shadow2
+          state: ON
+    turn_off_action:
+      - output.turn_on: b2
+      - delay: 10ms
+      - output.turn_off: b2
+      - binary_sensor.template.publish:
+          id: shadow2
+          state: OFF
+  # 模拟的SU刷机模式开关，开启后拉低sel0和sel1，开关电路切换，CH340的TX/RX与SU-03T的B6/B7相连
+  - platform: template
+    name: "Voice Assistant Upgrade"
+    restore_state: true
+    lambda: |-
+      if (id(shadow3).state) {
+        return true;
+      } else {
+        return false;
+      }
+    turn_on_action:
+      - output.turn_on: sel0
+      - output.turn_on: sel1
+      - binary_sensor.template.publish:
+          id: shadow3
+          state: true
+    turn_off_action:
+      - output.turn_off: sel0
+      - output.turn_off: sel1
+      - binary_sensor.template.publish:
+          id: shadow3
+          state: false
+
+
+# 自定义颜色
+color:
+  - id: my_red
+    red: 100%
+    green: 0%
+    blue: 0%
+  - id: my_yellow
+    red: 100%
+    green: 100%
+    blue: 0%
+  - id: my_green
+    red: 0%
+    green: 100%
+    blue: 0%
+  - id: my_blue
+    red: 0%
+    green: 0%
+    blue: 100%
+  - id: my_gray
+    red: 50%
+    green: 50%
+    blue: 50%
+
+# 自定义字体
+font:
+  - file: "fonts/Helvetica.ttf"
+    id: helvetica_48
+    size: 48
+  - file: "fonts/Helvetica.ttf"
+    id: helvetica_24
+    size: 24
+  - file: "fonts/Helvetica.ttf"
+    id: helvetica_12
+    size: 12
+
+image:
+  - file: "voron_design_logo.png"
+    id: voron_logo
+    resize: 240x135
+    type: RGB24
+
+#animation:
+#  - file: "hutao.gif"
+#    id: hutao
+#    resize: 135x135
+#    type: RGB24
+
+time:
+  - platform: sntp
+    id: sntp_time
+    servers: ntp.aliyun.com
+
+# SPI
+spi:
+  clk_pin: GPIO14
+  mosi_pin: GPIO13
+
+# 显示屏
+display:
+  - platform: st7789v
+    id: led_st7789v
+    model: Custom
+    cs_pin: GPIO15
+    dc_pin: GPIO27
+    reset_pin: GPIO12
+    backlight_pin: GPIO23
+    height: 240
+    width: 135
+    offset_height: 52
+    offset_width: 40
+    rotation: 90
+    update_interval: 5s
+    pages: 
+      - id : page_helloworld
+        lambda: |-
+          it.rectangle(0,  0, it.get_width(), it.get_height(), id(my_blue));
+          it.rectangle(0, 16, it.get_width(), it.get_height(), id(my_blue));   // header bar
+
+          //it.strftime((240 / 2), (140 / 3) * 1 + 5, id(helvetica_24), id(my_gray), TextAlign::CENTER, "%Y-%m-%d", id(esptime).now());
+          //it.strftime((240 / 2), (140 / 3) * 2 + 5, id(helvetica_48), id(my_gray), TextAlign::CENTER, "%H:%M:%S", id(esptime).now());
+          it.print(5, 2, id(helvetica_12), id(my_yellow), TextAlign::TOP_LEFT, "Voron");
+
+          it.print(20, 50, id(helvetica_24), id(my_green), TextAlign::TOP_LEFT, "HELLO WORLD");
+          // Comment out the above lines to see the image without text overlaid
+          // it.image(0, 0, id(my_image));
+
+          if (id(system_status).state) {
+            it.print(235, 2, id(helvetica_12), id(my_green), TextAlign::TOP_RIGHT, "Online");
+          }
+          else {
+            it.print(235, 2, id(helvetica_12), id(my_red), TextAlign::TOP_RIGHT, "Offline");
+          }
+      - id : page_voron
+        lambda: |-
+          // 外框线
+          it.rectangle(0,  0, it.get_width(), it.get_height(), id(my_blue));
+          // 顶部框线
+          it.rectangle(0, 16, it.get_width(), it.get_height(), id(my_blue));
+          // 左上角字
+          it.print(5, 2, id(helvetica_12), id(my_yellow), TextAlign::TOP_LEFT, "Voron");
+          // 右上角字
+          it.printf(235, 2, id(helvetica_12), id(my_green), TextAlign::TOP_RIGHT, "%s", id(system_status).state ? "Online" : "Offline");
+          // 中间显示内容
+          it.strftime((240 / 2), (140 / 3) * 1 + 5, id(helvetica_24), id(my_gray), TextAlign::CENTER, "%Y-%m-%d", id(sntp_time).now());
+          it.strftime((240 / 2), (140 / 3) * 2 + 5, id(helvetica_48), id(my_gray), TextAlign::CENTER, "%H:%M:%S", id(sntp_time).now());
+          //it.print((240 / 2), (140 / 3) * 1.5 + 5, id(helvetica_48), id(my_green), TextAlign::CENTER, "VORON");
+
+      - id : page_voron_logo
+        lambda: |-
+          it.image(0, 0, id(voron_logo));
+#      - id : page_hutao
+#        lambda: |-
+#          //Ingress shown animation Frame.
+#          id(hutao).next_frame();
+#          // Draw the animation my_animation at position [x=0,y=0]
+#          it.image(52.5, 0, id(hutao), COLOR_ON, COLOR_OFF);
+
+# HTTP请求
+http_request:
+  useragent: esphome/device
+  id: http_request_data
+  timeout: 10s
+
+# 计时器
+interval: 
+  # 定时切换显示页面 
+  - interval: 10s 
+    then: 
+      - display.page.show_next : led_st7789v 
+      - component.update: led_st7789v 
+  # 从MOONRAKER API获取打印机状态，并更新到文本传感器print_state
+  - interval: 30s 
+    then:
+      - http_request.get:
+          url: $moonraker_api
+          headers:
+            Content-Type: application/json
+          verify_ssl: false
+          on_response:
+            then:
+              #- logger.log:
+              #    format: 'Response status: %d'
+              #    args:
+              #      - status_code
+              - lambda: |-
+                  //-- Because ArduinoJson implements the Null Object Pattern, it is always safe to read the object: if the key doesn’t exist, it returns an empty value.
+                  auto data = id(http_request_data).get_string();
+                  ESP_LOGD("main", "Got value: %s", data);
+                  if (strlen(data)>0) {
+                    json::parse_json(data, [](JsonObject root) {
+                      if(root["state"]) {
+                        id(print_state).publish_state(root["state"]);
+                      } else {
+                        id(print_state).publish_state(root["result"]["state"]);
+                      }
+                    });
+                  } else {
+                    id(print_state).publish_state("404");
+                  }
+
