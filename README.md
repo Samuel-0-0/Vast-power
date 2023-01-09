@@ -22,13 +22,13 @@
 * ESP32程序使用[ESPHome](https://esphome.io/)构建
 * 离线语音基于[智能公元](http://www.smartpi.cn/)定制的语音固件
 
+## 接口介绍
+
+![3D_top_view_r](images/3D_top_view_r.jpg)
+
 ## PCB
 
-![pcb_top](images/pcb_top.jpg)
-![pcb_bottom](images/pcb_bottom.jpg)
-
-嘉立创制造文件 [Gerber_PCB_vast-power_2022-12-20](Gerber/Gerber_PCB_vast-power_2022-12-20.zip)
-焊接辅助文件 [PCB_vast-power_2022-12-20](Gerber/PCB_vast-power_2022-12-20.html)
+PCB制造文件及相关说明[查看](Gerber/)
 
 ## BOM
 
@@ -40,46 +40,13 @@ BOM文件 [bom_board_vast-power_2022-12-20](BOM/bom_board_vast-power_2022-12-20.
 
 ![3D_top_view_cover](images/3D_top_view_cover.jpg)
 
-3D打印外壳文件 [上盖](STLs/3DShell_vast-power_T.stl) [下盖](STLs/3DShell_vast-power_B.stl)
-
-## 接口介绍
-
-![3D_top_view_r](images/3D_top_view_r.jpg)
+3D打印外壳文件
+  * [上盖](STLs/3DShell_vast-power_T.stl) 
+  * [下盖](STLs/3DShell_vast-power_B.stl)
 
 ## 固件
 
-* ESP32固件
-  * [查看](Firmware/ESPHome/)
-* SU-03T固件
-  * 固件 [su_03t_release_update_20221219001_1.1.9](Firmware/SU-03T/su_03t_release_update_20221219001_1.1.9.bin)
-  * 烧录软件 [Hummingbird-M-Update-Tool](https://docs.aimachip.com/zh_CN/latest/_static/document/SU-03T/Hummingbird-M-Update-Tool.zip)
-
-## ESP32与SU-03T互动
-
-ESP32与SU-03T通过UART接口互动，具体消息内容请参考下方介绍。
-
-- SU-03T发送给ESP32消息内容及意义
-
-10 11  开照明灯
-10 10  关照明灯
-10 21  开氛围灯
-10 20  关氛围灯
-20 11  调亮灯光
-20 10  调暗灯光
-30 11  打开电源
-30 10  关闭电源
-40 01  暂停打印
-40 10  恢复打印
-40 11  取消打印
-50 00  打印进度
-
-- ESP32发送给SU-03T的消息内容及意义
-
-AA 55 01 00 00 00 00 55 AA   关闭电源判断返回，打印中
-AA 55 02 01 00 00 00 55 AA   关闭电源判断返回，未打印
-AA 55 03 01 00 00 00 55 AA   开始OTA
-AA 55 04 01 00 00 00 55 AA   结束OTA
-AA 55 05 00 01 02 55 AA   打印进度返回，00对应进度百分比数字，01对应剩余小时数字，02对应剩余分钟数字
+固件及相关说明[查看](Firmware/)
 
 ## 显示屏logo文件
 
