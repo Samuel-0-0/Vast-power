@@ -15,7 +15,7 @@
 ### ESP32固件烧录方法
 初次使用，编译完固件后，下载bin文件。
 
-切断设备供电，短接主板上面2PIN脚，连上USB线，使用ESPHome-Flasher烧录。
+切断设备供电，短接主板上面2PIN脚，连上USB线，使用[ESPHome-Flasher](https://github.com/esphome/esphome-flasher/releases/tag/1.4.0)烧录。
 
 ### SU-03T固件烧录方法
 烧录完ESP32固件后设备连上网络，在HomeAssistant里配置-设备与服务-添加集成-ESPHOME。添加完成后，在集成中找到并进入设备。
