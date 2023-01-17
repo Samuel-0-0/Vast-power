@@ -48,6 +48,12 @@ BOM文件 [bom_board_vast-power_2022-12-20](BOM/bom_board_vast-power_2022-12-20.
 
 固件及相关说明[查看](Firmware/)
 
+## IO保护
+
+当需要与打印机主板连接的时候，请确保打印机主板的IO电压为3.3V。若为5V请加保护电路。
+
+![io_in](images/io_in.jpg)
+
 ## 显示屏logo文件
 
 Logo文件下载 [PSD](images/voron_design_logo.psd)
